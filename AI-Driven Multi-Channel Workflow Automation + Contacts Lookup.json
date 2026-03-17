@@ -1,0 +1,493 @@
+{
+  "name": "AI-Driven Multi-Channel Workflow Automation + Contacts Lookup",
+  "nodes": [
+    {
+      "parameters": {
+        "sendTo": "={{ $('Parse Message').item.json.gmailQuery }}",
+        "subject": "Mails Analysis Report ",
+        "emailType": "text",
+        "message": "={{ $json.adminEmailHtml }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -640,
+        1008
+      ],
+      "id": "2c36315d-90ce-4e58-8927-a3988b510ab6",
+      "name": "Send a message1",
+      "webhookId": "e87546ab-709e-4d8a-87be-9de46c1a4149",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "AnnVBPwYqpHFCog8",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Build LLM Request1').item.json.emailAddresses[0] }}",
+        "subject": "Mails Analysis Report ",
+        "emailType": "text",
+        "message": "={{ $json.adminEmailHtml }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -2800,
+        2496
+      ],
+      "id": "dc3a30d8-5cf3-4ca4-a913-075fe2a08030",
+      "name": "Send a message",
+      "webhookId": "e87546ab-709e-4d8a-87be-9de46c1a4149",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "AnnVBPwYqpHFCog8",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const messageText = $input.first().json.message?.text?.toLowerCase() || '';\nconst chatId = String($input.first().json.message?.chat?.id || '');\n\nif (!messageText) {\n  return [{ json: { success: false, chatId, error: '❌ No text received.' } }];\n}\n\n// ──────────────────────────────────────────────\n// Name detection & extraction\nlet lookupName = '';\nconst namePatterns = [\n  /mohamed|mohammed/i,\n  /ali|ail/i,\n  /search\\s+(?:for)?\\s*([\\w\\s]+)/i,\n  /find\\s+([\\w\\s]+)/i,\n  /email\\s+(?:of|for)?\\s*([\\w\\s]+)/i,\n  /contact\\s+([\\w\\s]+)/i\n];\n\nfor (const regex of namePatterns) {\n  const m = messageText.match(regex);\n  if (m && m[1]) {\n    lookupName = m[1].trim();\n    break;\n  } else if (m && m[0]) {\n    lookupName = m[0].trim();\n    break;\n  }\n}\n\n// fallback: take first word longer than 3 chars if looks like name\nif (!lookupName) {\n  const words = messageText.split(/\\s+/).filter(w => w.length > 3 && !['search','for','email','of','contact'].includes(w));\n  if (words.length) lookupName = words[0];\n}\n\nlookupName = lookupName.replace(/[^\\w\\s]/g, '').trim();\nconst isLookup = !!lookupName && (messageText.includes('search') || messageText.includes('find') || messageText.includes('email') || messageText.includes('contact') || ['mohamed','ali','ail'].some(n => messageText.includes(n)));\n\n// ──────────────────────────────────────────────\n// Original parsing logic (emails + prompt)\nlet prompt = '';\nlet emailAddresses = [];\n\nconst promptMatch = $input.first().json.message.text.match(/\\[PROMPT:\\s*(.+?)\\]/is);\nconst emailsMatch = $input.first().json.message.text.match(/\\[EMAILS:\\s*(.+?)\\]/is);\n\nif (promptMatch && emailsMatch) {\n  prompt = promptMatch[1].trim();\n  emailAddresses = emailsMatch[1].split(',').map(e => e.trim()).filter(e => e.includes('@'));\n} else {\n  const lines = $input.first().json.message.text.split('\\n').map(l => l.trim()).filter(l => l.length > 0);\n  prompt = lines[0] || '';\n  for (let i = 1; i < lines.length; i++) {\n    const emails = lines[i].split(',').map(e => e.trim()).filter(e => e.includes('@'));\n    emailAddresses.push(...emails);\n  }\n}\n\nif (!prompt) {\n  return [{ json: { success: false, chatId, error: '❌ No prompt found.' } }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    prompt,\n    emailAddresses,\n    chatId,\n    startTime: new Date().toISOString(),\n    lookupName,\n    isLookup\n  }\n}];"
+      },
+      "id": "d5a78277-dd2d-4906-a079-0c23a3bf1d5c",
+      "name": "Parse Message1 + Name Detect",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4208,
+        2880
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "fields": [
+          "emailAddresses",
+          "names"
+        ],
+        "options": {}
+      },
+      "id": "e88c90a0-b322-468e-9701-1a4ce0875532",
+      "name": "Get Google Contacts",
+      "type": "n8n-nodes-base.googleContacts",
+      "typeVersion": 1,
+      "position": [
+        -3952,
+        2608
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "googleContactsOAuth2Api": {
+          "id": "60W5mlPmiI1Hvipr",
+          "name": "Google Contacts account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.names?.[0]?.displayName?.toLowerCase() || '' }}",
+              "operation": "contains",
+              "value2": "={{ $json.lookupName?.toLowerCase() || '' }}"
+            }
+          ]
+        }
+      },
+      "id": "592398f7-a693-48f6-a582-0cba50657813",
+      "name": "Filter Contact by Name",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 1,
+      "position": [
+        -3728,
+        2624
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ba9a1a4f-cb21-43d8-bd79-f1cf5428663a",
+      "name": "Merge Contact Result",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -3488,
+        2640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parse = $input.first().json;\nlet emailAddresses = parse.emailAddresses || [];\nlet fromContacts = false;\n\nif (parse.isLookup && items.length > 1) {\n  // items[1] = contact match branch\n  const contact = items[1].json;\n  const email = contact.emailAddresses?.[0]?.value;\n  if (email && !emailAddresses.includes(email)) {\n    emailAddresses.push(email);\n    fromContacts = true;\n  }\n}\n\nconst gmailQuery = emailAddresses.map(e => 'from:' + e).join(' OR ') || 'from:nobody-to-force-empty';\n\nreturn [{\n  json: {\n    ...parse,\n    emailAddresses,\n    gmailQuery,\n    fromContacts\n  }\n}];"
+      },
+      "id": "bada535e-9300-434f-a77b-95e5073eb3f9",
+      "name": "Combine Emails + Contact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3280,
+        2880
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "128dcdda-0a7a-4e68-b044-02181415c704",
+      "name": "IF Valid Parse1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -3120,
+        3008
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 20,
+        "filters": {
+          "q": "={{ $json.gmailQuery }}"
+        }
+      },
+      "id": "20979ae4-df08-4149-8c81-e95b907d4907",
+      "name": "Get Emails1",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -2848,
+        3088
+      ],
+      "webhookId": "b2dacab8-1eff-4639-b909-b33110727fcf",
+      "alwaysOutputData": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "AnnVBPwYqpHFCog8",
+          "name": "Gmail OAuth2 API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parseData = $('Parse Message1 + Name Detect').first().json;\nconst emailItems = $input.all();\nlet emailContent = '';\n\ntry {\n  if (emailItems.length > 0 && emailItems[0].json.id) {\n    emailContent = emailItems.map((item, i) => {\n      const e = item.json;\n      const body = e.snippet || e.textPlain || e.text || 'No content';\n      return '--- Email ' + (i+1) + ' ---\\nFrom: ' + (e.from || 'Unknown') + '\\nSubject: ' + (e.subject || 'No Subject') + '\\nDate: ' + (e.date || 'Unknown') + '\\nContent: ' + body;\n    }).join('\\n\\n');\n  } else {\n    emailContent = 'No emails found for the specified addresses.';\n  }\n} catch(e) {\n  emailContent = 'Could not retrieve emails. Error: ' + e.message;\n}\n\nconst fullPrompt = 'Analyze the following emails based on this request: \"' + parseData.prompt + '\"\\n\\nEmails:\\n' + emailContent + '\\n\\nProvide a comprehensive analysis addressing the request. Be concise but thorough.';\n\nconst requestBody = JSON.stringify({\n  model: 'llama-3.3-70b-versatile',\n  messages: [\n    { role: 'system', content: 'You are a professional email analyst. Provide clear, structured analysis.' },\n    { role: 'user', content: fullPrompt }\n  ],\n  temperature: 0.7,\n  max_tokens: 4096\n});\n\nreturn [{ json: { requestBody, chatId: parseData.chatId, prompt: parseData.prompt, emailAddresses: parseData.emailAddresses, startTime: parseData.startTime, emailCount: emailItems.length } }];"
+      },
+      "id": "bd24693c-c89a-4b85-90e7-dc17ae2dab5c",
+      "name": "Build LLM Request1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2608,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.requestBody }}",
+        "options": {}
+      },
+      "id": "5492e140-3086-45cc-86bf-3ccc3a368258",
+      "name": "Call Groq API1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2384,
+        2768
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.telegramResponse }}",
+        "additionalFields": {}
+      },
+      "id": "d53e044c-7dcd-4a10-beaa-2b86e985e8e1",
+      "name": "Send Telegram Reply1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2784,
+        2656
+      ],
+      "webhookId": "07862fe3-ca91-4e41-be63-ee9cc48bfd2f",
+      "credentials": {
+        "telegramApi": {
+          "id": "E51qtSkQFow7f4h9",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst logEntry = {\n  timestamp: new Date().toISOString(),\n  prompt: $('Parse Message1 + Name Detect').first().json.prompt,\n  emailsSearched: $('Parse Message1 + Name Detect').first().json.emailAddresses,\n  responseLength: (data.llmResponse || '').length,\n  executionTime: Date.now() - new Date(data.startTime).getTime()\n};\nconsole.log('Transaction Log:', JSON.stringify(logEntry));\nreturn [{ json: { logEntry, ...data } }];"
+      },
+      "id": "dc508f05-eea7-4d4d-ba84-ed7b13649a4a",
+      "name": "Log Transaction1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2944,
+        2736
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.error }}",
+        "additionalFields": {}
+      },
+      "id": "87d63ed7-d5eb-46e8-ad58-9a0809779c51",
+      "name": "Send Error Reply1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -3760,
+        3008
+      ],
+      "webhookId": "e1be0196-4eb5-4a77-873f-3f0cd1c9a52b",
+      "credentials": {
+        "telegramApi": {
+          "id": "hM1c9HPa1MZNUwqJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -4432,
+        2880
+      ],
+      "id": "869fd7e6-bc76-4f3c-af18-7673cdddad52",
+      "name": "Telegram Trigger1",
+      "webhookId": "6906eadc-e9ec-4a54-80c8-3b3b5caf8b0c",
+      "credentials": {
+        "telegramApi": {
+          "id": "E51qtSkQFow7f4h9",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const groqRes = $input.first().json;\nconst parseData = $('Build LLM Request1').first().json;\nlet llmResponse = '';\n\ntry {\n  if (groqRes.choices && groqRes.choices.length > 0) {\n    llmResponse = groqRes.choices[0].message.content;\n  } else if (groqRes.error) {\n    llmResponse = '⚠️ API Error: ' + (groqRes.error.message || JSON.stringify(groqRes.error));\n  } else {\n    llmResponse = '⚠️ No response from AI model.';\n  }\n} catch(e) {\n  llmResponse = '⚠️ Error processing response: ' + e.message;\n}\n\nlet telegramResponse = '📊 Analysis Result:\\n\\n' + llmResponse;\nif (telegramResponse.length > 4000) {\n  telegramResponse = telegramResponse.substring(0, 3997) + '...';\n}\n\nconst adminEmailHtml = '<h2>AI Email Analysis Report</h2><p><b>Request:</b> ' + parseData.prompt + '</p><p><b>Emails Searched:</b> ' + parseData.emailAddresses.join(', ') + (parseData.fromContacts ? ' (from contacts lookup)' : '') + '</p><p><b>Time:</b> ' + new Date().toISOString() + '</p><hr><h3>Analysis:</h3><p>' + llmResponse.replace(/\\n/g, '<br>') + '</p>';\n\nreturn [{ json: { telegramResponse, adminEmailHtml, adminEmailSubject: 'AI Analysis: ' + parseData.prompt.substring(0, 50), chatId: parseData.chatId, llmResponse, startTime: parseData.startTime } }];"
+      },
+      "id": "09d59146-426f-479e-b690-a7f6a2c5a2a2",
+      "name": "Parse Message1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3104,
+        2592
+      ],
+      "alwaysOutputData": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Parse Message1 + Name Detect": {
+      "main": [
+        [
+          {
+            "node": "Get Google Contacts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Valid Parse1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Google Contacts": {
+      "main": [
+        [
+          {
+            "node": "Filter Contact by Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Contact by Name": {
+      "main": [
+        [
+          {
+            "node": "Merge Contact Result",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Contact Result": {
+      "main": [
+        [
+          {
+            "node": "Combine Emails + Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Emails + Contact": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Parse1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Parse1": {
+      "main": [
+        [
+          {
+            "node": "Get Emails1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Error Reply1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Emails1": {
+      "main": [
+        [
+          {
+            "node": "Build LLM Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build LLM Request1": {
+      "main": [
+        [
+          {
+            "node": "Call Groq API1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq API1": {
+      "main": [
+        [
+          {
+            "node": "Parse Message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Parse Message1 + Name Detect",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Message1": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Reply1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Transaction1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "e631a646-0291-41ed-83b8-b9ee2b324440",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1202b07ebac5245051ece2013acb8a69b4983dee7dd0bea0735fa26e201b5957"
+  },
+  "id": "V4EMfjdkp1d2HfXS",
+  "tags": []
+}

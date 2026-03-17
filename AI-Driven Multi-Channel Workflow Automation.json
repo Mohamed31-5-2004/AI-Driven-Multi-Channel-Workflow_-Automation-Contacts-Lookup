@@ -1,0 +1,372 @@
+{
+  "name": "AI-Driven Multi-Channel Workflow Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "sendTo": "={{ $('Parse Message').item.json.gmailQuery }}",
+        "subject": "Mails Analysis Report ",
+        "emailType": "text",
+        "message": "={{ $json.adminEmailHtml }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -640,
+        1008
+      ],
+      "id": "2c36315d-90ce-4e58-8927-a3988b510ab6",
+      "name": "Send a message1",
+      "webhookId": "e87546ab-709e-4d8a-87be-9de46c1a4149",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "AnnVBPwYqpHFCog8",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Parse Message1').item.json.gmailQuery }}",
+        "subject": "Mails Analysis Report ",
+        "emailType": "text",
+        "message": "={{ $json.adminEmailHtml }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -2560,
+        2656
+      ],
+      "id": "a1951644-3b63-4251-8df3-633ab777174a",
+      "name": "Send a message",
+      "webhookId": "e87546ab-709e-4d8a-87be-9de46c1a4149",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "AnnVBPwYqpHFCog8",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const groqRes = $input.first().json;\nconst parseData = $('Parse Message1').first().json;\nlet llmResponse = '';\n\ntry {\n  if (groqRes.choices && groqRes.choices.length > 0) {\n    llmResponse = groqRes.choices[0].message.content;\n  } else if (groqRes.error) {\n    llmResponse = '⚠️ API Error: ' + (groqRes.error.message || JSON.stringify(groqRes.error));\n  } else {\n    llmResponse = '⚠️ No response from AI model.';\n  }\n} catch(e) {\n  llmResponse = '⚠️ Error processing response: ' + e.message;\n}\n\nlet telegramResponse = '📊 Analysis Result:\\n\\n' + llmResponse;\nif (telegramResponse.length > 4000) {\n  telegramResponse = telegramResponse.substring(0, 3997) + '...';\n}\n\nconst adminEmailHtml = '<h2>AI Email Analysis Report</h2><p><b>Request:</b> ' + parseData.prompt + '</p><p><b>Emails Searched:</b> ' + parseData.emailAddresses.join(', ') + '</p><p><b>Time:</b> ' + new Date().toISOString() + '</p><hr><h3>Analysis:</h3><p>' + llmResponse.replace(/\\n/g, '<br>') + '</p>';\n\nreturn [{ json: { telegramResponse, adminEmailHtml, adminEmailSubject: 'AI Analysis: ' + parseData.prompt.substring(0, 50), chatId: parseData.chatId, llmResponse, startTime: parseData.startTime } }];"
+      },
+      "id": "7869e90d-2632-419f-b104-10c923d6bc15",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2800,
+        2928
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const messageText = $input.first().json.message?.text || '';\nconst chatId = String($input.first().json.message?.chat?.id || '');\n\nif (!messageText) {\n  return [{ json: { success: false, chatId, error: '❌ No text received. Send a text message.' } }];\n}\n\nconst lines = messageText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);\nlet prompt = '';\nlet emailAddresses = [];\n\nconst promptMatch = messageText.match(/\\[PROMPT:\\s*(.+?)\\]/is);\nconst emailsMatch = messageText.match(/\\[EMAILS:\\s*(.+?)\\]/is);\n\nif (promptMatch && emailsMatch) {\n  prompt = promptMatch[1].trim();\n  emailAddresses = emailsMatch[1].split(',').map(e => e.trim()).filter(e => e.includes('@'));\n} else {\n  prompt = lines[0];\n  for (let i = 1; i < lines.length; i++) {\n    const emails = lines[i].split(',').map(e => e.trim()).filter(e => e.includes('@'));\n    emailAddresses.push(...emails);\n  }\n}\n\nif (!prompt || emailAddresses.length === 0) {\n  return [{ json: { success: false, chatId, error: '❌ Format:\\nLine 1: Your prompt\\nLine 2+: email addresses\\n\\nOr:\\n[PROMPT: request]\\n[EMAILS: e1@x.com, e2@x.com]' } }];\n}\n\nconst gmailQuery = emailAddresses.map(e => 'from:' + e).join(' OR ');\n\nreturn [{ json: { success: true, prompt, emailAddresses, gmailQuery, chatId, startTime: new Date().toISOString() } }];"
+      },
+      "id": "929ca82e-6aef-4937-8f23-68f9f2a09472",
+      "name": "Parse Message1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3968,
+        3040
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f83c3a15-e287-45a0-ad74-fac9d24e19c6",
+      "name": "IF Valid Parse1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -3744,
+        3040
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 20,
+        "filters": {
+          "q": "={{ $json.gmailQuery }}"
+        }
+      },
+      "id": "4789d4ff-ce02-44f2-86dd-ec0490fb6ccc",
+      "name": "Get Emails1",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -3520,
+        2928
+      ],
+      "webhookId": "b2dacab8-1eff-4639-b909-b33110727fcf",
+      "alwaysOutputData": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "AnnVBPwYqpHFCog8",
+          "name": "Gmail OAuth2 API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parseData = $('Parse Message1').first().json;\nconst emailItems = $input.all();\nlet emailContent = '';\n\ntry {\n  if (emailItems.length > 0 && emailItems[0].json.id) {\n    emailContent = emailItems.map((item, i) => {\n      const e = item.json;\n      const body = e.snippet || e.textPlain || e.text || 'No content';\n      return '--- Email ' + (i+1) + ' ---\\nFrom: ' + (e.from || 'Unknown') + '\\nSubject: ' + (e.subject || 'No Subject') + '\\nDate: ' + (e.date || 'Unknown') + '\\nContent: ' + body;\n    }).join('\\n\\n');\n  } else {\n    emailContent = 'No emails found for the specified addresses.';\n  }\n} catch(e) {\n  emailContent = 'Could not retrieve emails. Error: ' + e.message;\n}\n\nconst fullPrompt = 'Analyze the following emails based on this request: \"' + parseData.prompt + '\"\\n\\nEmails:\\n' + emailContent + '\\n\\nProvide a comprehensive analysis addressing the request. Be concise but thorough.';\n\nconst requestBody = JSON.stringify({\n  model: 'llama-3.3-70b-versatile',\n  messages: [\n    { role: 'system', content: 'You are a professional email analyst. Provide clear, structured analysis.' },\n    { role: 'user', content: fullPrompt }\n  ],\n  temperature: 0.7,\n  max_tokens: 4096\n});\n\nreturn [{ json: { requestBody, chatId: parseData.chatId, prompt: parseData.prompt, emailAddresses: parseData.emailAddresses, startTime: parseData.startTime, emailCount: emailItems.length } }];"
+      },
+      "id": "1b452511-5dfd-4147-b11e-71f30ad43545",
+      "name": "Build LLM Request1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3280,
+        2928
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.requestBody }}",
+        "options": {}
+      },
+      "id": "3996d73c-fb8a-4d9f-8032-ceecf211a446",
+      "name": "Call Groq API1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3040,
+        2928
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.telegramResponse }}",
+        "additionalFields": {}
+      },
+      "id": "799c4f40-2b2b-41e0-9efc-ab1243b753d6",
+      "name": "Send Telegram Reply1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2544,
+        2816
+      ],
+      "webhookId": "07862fe3-ca91-4e41-be63-ee9cc48bfd2f",
+      "credentials": {
+        "telegramApi": {
+          "id": "E51qtSkQFow7f4h9",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst logEntry = {\n  timestamp: new Date().toISOString(),\n  prompt: $('Parse Message1').first().json.prompt,\n  emailsSearched: $('Parse Message1').first().json.emailAddresses,\n  responseLength: (data.llmResponse || '').length,\n  executionTime: Date.now() - new Date(data.startTime).getTime()\n};\nconsole.log('Transaction Log:', JSON.stringify(logEntry));\nreturn [{ json: { logEntry, ...data } }];"
+      },
+      "id": "27243dec-17e5-4ff2-835f-e7ff068b604f",
+      "name": "Log Transaction1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2528,
+        3056
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.error }}",
+        "additionalFields": {}
+      },
+      "id": "93f9050a-7d9b-4ca5-b5e8-cebdb2cdb60d",
+      "name": "Send Error Reply1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -3520,
+        3168
+      ],
+      "webhookId": "e1be0196-4eb5-4a77-873f-3f0cd1c9a52b",
+      "credentials": {
+        "telegramApi": {
+          "id": "hM1c9HPa1MZNUwqJ",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -4192,
+        3040
+      ],
+      "id": "1d8e14f8-51c6-4477-bff6-b8d1b24da890",
+      "name": "Telegram Trigger1",
+      "webhookId": "6906eadc-e9ec-4a54-80c8-3b3b5caf8b0c",
+      "credentials": {
+        "telegramApi": {
+          "id": "E51qtSkQFow7f4h9",
+          "name": "Telegram account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Reply1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Transaction1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Message1": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Parse1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Parse1": {
+      "main": [
+        [
+          {
+            "node": "Get Emails1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Error Reply1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Emails1": {
+      "main": [
+        [
+          {
+            "node": "Build LLM Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build LLM Request1": {
+      "main": [
+        [
+          {
+            "node": "Call Groq API1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq API1": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Parse Message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "e120d8fe-03b0-4cbd-9aa4-1b8bc3c74f3a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1202b07ebac5245051ece2013acb8a69b4983dee7dd0bea0735fa26e201b5957"
+  },
+  "id": "V4EMfjdkp1d2HfXS",
+  "tags": []
+}
